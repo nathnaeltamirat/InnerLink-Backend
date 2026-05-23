@@ -26,17 +26,6 @@ public class DatabaseSetup {
         )
     """;
 
-  // 2. SESSIONS TABLE
-  private static final String CREATE_SESSIONS_TABLE = """
-        CREATE TABLE IF NOT EXISTS sessions (
-            id          VARCHAR(36) PRIMARY KEY,
-            user_id     VARCHAR(36) NOT NULL,
-            token       TEXT        NOT NULL,
-            expires_at  DATETIME    NOT NULL,
-            created_at  DATETIME    DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        )
-    """;
 
 
   // 3. REFLECTIONS TABLE
@@ -178,7 +167,6 @@ public class DatabaseSetup {
     Promise<Void> promise = Promise.promise();
 
     client.query(CREATE_USERS_TABLE).execute()
-      .compose(v -> client.query(CREATE_SESSIONS_TABLE).execute())
       .compose(v -> client.query(CREATE_REFLECTIONS_TABLE).execute())
       .compose(v -> client.query(CREATE_SUPPORT_REQUESTS_TABLE).execute())
       .compose(v -> client.query(CREATE_CONVERSATIONS_TABLE).execute())
