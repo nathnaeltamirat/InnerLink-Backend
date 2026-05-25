@@ -19,6 +19,10 @@ public class AuthService {
     this.vertx = vertx;
   }
 
+  private String generateId() {
+    return UUID.randomUUID().toString();
+  }
+
   public Future<JsonObject> login(String email, String passkey) {
     Promise<JsonObject> promise = Promise.promise();
 
@@ -31,13 +35,11 @@ public class AuthService {
           return;
         }
         Row row = rows.iterator().next();
-        String storedHash = row.getString("passkey_hash");
-        if (!BCrypt.checkpw(passkey, storedHash)) {
+        if (!BCrypt.checkpw(passkey, row.getString("passkey_hash"))) {
           promise.fail("Invalid password");
           return;
         }
-        JsonObject session = createSession(row);
-        promise.complete(session);
+        promise.complete(createSession(row));
       })
       .onFailure(promise::fail);
 
@@ -46,13 +48,11 @@ public class AuthService {
 
   public Future<JsonObject> register(JsonObject data) {
     Promise<JsonObject> promise = Promise.promise();
-
     String email = data.getString("email");
     String passkey = data.getString("passkey");
     String alias = data.getString("alias", "Anonymous");
     String role = data.getString("role", "user");
 
-    // Check if email already exists
     DatabaseConfig.getClient()
       .preparedQuery("SELECT id FROM users WHERE email = ?")
       .execute(Tuple.of(email))
@@ -61,34 +61,21 @@ public class AuthService {
           promise.fail("Email already exists");
           return;
         }
-
-        String hashedPasskey = BCrypt.hashpw(passkey, BCrypt.gensalt());
-        String userId = UUID.randomUUID().toString();
-
+        String id = generateId();
+        String hash = BCrypt.hashpw(passkey, BCrypt.gensalt());
         DatabaseConfig.getClient()
           .preparedQuery("INSERT INTO users (id, email, passkey_hash, alias, role) VALUES (?, ?, ?, ?, ?)")
-          .execute(Tuple.of(userId, email, hashedPasskey, alias, role))
+          .execute(Tuple.of(id, email, hash, alias, role))
           .onSuccess(v -> {
-            promise.complete(new JsonObject()
-              .put("id", userId)
+            JsonObject user = new JsonObject()
+              .put("id", id)
               .put("email", email)
               .put("alias", alias)
-              .put("role", role));
+              .put("role", role);
+            promise.complete(user);
           })
           .onFailure(promise::fail);
       })
-      .onFailure(promise::fail);
-
-    return promise.future();
-  }
-
-  public Future<Void> logout(String token) {
-    Promise<Void> promise = Promise.promise();
-
-    DatabaseConfig.getClient()
-      .preparedQuery("DELETE FROM sessions WHERE token = ?")
-      .execute(Tuple.of(token))
-      .onSuccess(v -> promise.complete())
       .onFailure(promise::fail);
 
     return promise.future();
@@ -115,7 +102,7 @@ public class AuthService {
 
   private JsonObject createSession(Row user) {
     String token = UUID.randomUUID().toString();
-    String sessionId = UUID.randomUUID().toString();
+    String sessionId = generateId();
     String expiresAt = LocalDateTime.now().plusDays(7).toString();
 
     DatabaseConfig.getClient()
@@ -134,22 +121,9 @@ public class AuthService {
     json.put("alias", row.getString("alias"));
     json.put("role", row.getString("role"));
     json.put("currentMood", row.getString("current_mood") != null ? row.getString("current_mood") : "Meditative");
-    Object isAvailableObj = row.getValue("is_available");
-    if (isAvailableObj instanceof Boolean) {
-      json.put("isAvailable", (Boolean) isAvailableObj);
-    } else if (isAvailableObj instanceof Integer) {
-      json.put("isAvailable", ((Integer) isAvailableObj) == 1);
-    } else {
-      json.put("isAvailable", false);
-    }
-
-    Object totalSoulsObj = row.getValue("total_souls_helped");
-    if (totalSoulsObj instanceof Integer) {
-      json.put("totalSoulsHelped", (Integer) totalSoulsObj);
-    } else {
-      json.put("totalSoulsHelped", 0);
-    }
-
+    json.put("isAnonymous", row.getInteger("is_anonymous") == 1);
+    json.put("isAvailable", row.getInteger("is_available") != null && row.getInteger("is_available") == 1);
+    json.put("totalSoulsHelped", row.getInteger("total_souls_helped") != null ? row.getInteger("total_souls_helped") : 0);
     json.put("avatarUrl", row.getString("avatar_url"));
     return json;
   }

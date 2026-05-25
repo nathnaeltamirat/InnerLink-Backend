@@ -14,12 +14,5 @@ public class UserRouter {
   public void setupRoutes(Router router) {
     router.get("/api/users/:id").handler(userController::getUser);
     router.put("/api/users/:id").handler(userController::updateUser);
-    router.get("/api/users/:id/profile").handler(userController::getProfile);
-    router.put("/api/users/:id/availability").handler(userController::toggleAvailability);
-    router.get("/api/volunteers").handler(userController::getVolunteers);
-    router.get("/api/volunteers/available").handler(userController::getAvailableVolunteers);
-    router.get("/api/support-requests/waiting").handler(userController::getWaitingSupport);
-    router.post("/api/support-requests/:id/accept").handler(userController::acceptSupportRequest);
-    System.out.println("User routes setup");
   }
 }

@@ -14,8 +14,5 @@ public class PostRouter {
   public void setupRoutes(Router router) {
     router.get("/api/reflections").handler(postController::getAllReflections);
     router.post("/api/reflections").handler(postController::createReflection);
-    router.get("/api/reflections/:id").handler(postController::getReflection);
-    router.delete("/api/reflections/:id").handler(postController::deleteReflection);
-    System.out.println("Post routes setup");
   }
 }

@@ -15,7 +15,7 @@ public class UserController {
   public void getUser(RoutingContext ctx) {
     String userId = ctx.request().getParam("id");
     userService.getUserById(userId)
-      .onSuccess(user -> ctx.json(user))
+      .onSuccess(ctx::json)
       .onFailure(err -> ctx.response().setStatusCode(404).end("User not found"));
   }
 
@@ -23,50 +23,7 @@ public class UserController {
     String userId = ctx.request().getParam("id");
     JsonObject data = ctx.body().asJsonObject();
     userService.updateUser(userId, data)
-      .onSuccess(user -> ctx.json(user))
+      .onSuccess(ctx::json)
       .onFailure(err -> ctx.response().setStatusCode(400).end(err.getMessage()));
   }
-
-  public void getProfile(RoutingContext ctx) {
-    String userId = ctx.request().getParam("id");
-    userService.getProfile(userId)
-      .onSuccess(profile -> ctx.json(profile))
-      .onFailure(err -> ctx.response().setStatusCode(404).end("Profile not found"));
-  }
-
-  public void toggleAvailability(RoutingContext ctx) {
-    String userId = ctx.request().getParam("id");
-    JsonObject data = ctx.body().asJsonObject();
-    boolean isAvailable = data.getBoolean("isAvailable");
-    userService.toggleAvailability(userId, isAvailable)
-      .onSuccess(result -> ctx.json(new JsonObject().put("success", true)))
-      .onFailure(err -> ctx.response().setStatusCode(400).end(err.getMessage()));
-  }
-
-  public void getVolunteers(RoutingContext ctx) {
-    userService.getAllVolunteers()
-      .onSuccess(volunteers -> ctx.json(volunteers))
-      .onFailure(err -> ctx.response().setStatusCode(500).end("Server error"));
-  }
-
-  public void getAvailableVolunteers(RoutingContext ctx) {
-    userService.getAvailableVolunteers()
-      .onSuccess(volunteers -> ctx.json(volunteers))
-      .onFailure(err -> ctx.response().setStatusCode(500).end("Server error"));
-  }
-
-  public void getWaitingSupport(RoutingContext ctx) {
-    userService.getWaitingSupportRequests()
-      .onSuccess(requests -> ctx.json(requests))
-      .onFailure(err -> ctx.response().setStatusCode(500).end(err.getMessage()));
-  }
-
-  public void acceptSupportRequest(RoutingContext ctx) {
-    String id = ctx.request().getParam("id");
-    String token = ctx.request().getHeader("Authorization");
-    userService.acceptSupportRequest(id, token)
-      .onSuccess(result -> ctx.json(new JsonObject().put("success", true)))
-      .onFailure(err -> ctx.response().setStatusCode(400).end(err.getMessage()));
-  }
-
 }

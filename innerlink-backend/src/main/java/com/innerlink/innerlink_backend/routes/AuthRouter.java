@@ -14,8 +14,6 @@ public class AuthRouter {
   public void setupRoutes(Router router) {
     router.post("/api/auth/login").handler(authController::login);
     router.post("/api/auth/register").handler(authController::register);
-    router.post("/api/auth/logout").handler(authController::logout);
     router.get("/api/auth/me").handler(authController::getCurrentUser);
-    System.out.println("Auth routes setup");
   }
 }

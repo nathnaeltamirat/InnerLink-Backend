@@ -14,7 +14,7 @@ public class PostController {
 
   public void getAllReflections(RoutingContext ctx) {
     postService.getAllReflections()
-      .onSuccess(reflections -> ctx.json(reflections))
+      .onSuccess(ctx::json)
       .onFailure(err -> ctx.response().setStatusCode(500).end("Server error"));
   }
 
@@ -24,21 +24,7 @@ public class PostController {
     if (userId == null) userId = body.getString("userId");
     body.put("userId", userId);
     postService.createReflection(body)
-      .onSuccess(reflection -> ctx.json(reflection))
+      .onSuccess(ctx::json)
       .onFailure(err -> ctx.response().setStatusCode(400).end(err.getMessage()));
-  }
-
-  public void getReflection(RoutingContext ctx) {
-    String id = ctx.request().getParam("id");
-    postService.getReflectionById(id)
-      .onSuccess(reflection -> ctx.json(reflection))
-      .onFailure(err -> ctx.response().setStatusCode(404).end("Reflection not found"));
-  }
-
-  public void deleteReflection(RoutingContext ctx) {
-    String id = ctx.request().getParam("id");
-    postService.deleteReflection(id)
-      .onSuccess(v -> ctx.response().setStatusCode(200).end())
-      .onFailure(err -> ctx.response().setStatusCode(404).end("Reflection not found"));
   }
 }
