@@ -10,7 +10,7 @@ public class DatabaseConfig {
   private static SqlClient client;
   private static boolean isSetupComplete = false;
 
-  private static final String DB_PASSWORD = ""; 
+  private static final String DB_PASSWORD = "267226"; 
   private static final String DB_USER = "root";
   private static final String DB_NAME = "innerlink";
 
