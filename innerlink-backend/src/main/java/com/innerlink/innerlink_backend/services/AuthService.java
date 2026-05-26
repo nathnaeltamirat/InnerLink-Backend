@@ -19,29 +19,30 @@ public class AuthService {
     this.vertx = vertx;
   }
 
-  private String generateId() {
-    return UUID.randomUUID().toString();
+  private static String generateId(String prefix) {
+    return prefix + "_" + java.time.LocalDate.now() + "_" +
+        UUID.randomUUID().toString().substring(0, 9).toUpperCase();
   }
 
   public Future<JsonObject> login(String email, String passkey) {
     Promise<JsonObject> promise = Promise.promise();
 
     DatabaseConfig.getClient()
-      .preparedQuery("SELECT * FROM users WHERE email = ?")
-      .execute(Tuple.of(email))
-      .onSuccess(rows -> {
-        if (rows.size() == 0) {
-          promise.fail("User not found");
-          return;
-        }
-        Row row = rows.iterator().next();
-        if (!BCrypt.checkpw(passkey, row.getString("passkey_hash"))) {
-          promise.fail("Invalid password");
-          return;
-        }
-        promise.complete(createSession(row));
-      })
-      .onFailure(promise::fail);
+        .preparedQuery("SELECT * FROM users WHERE email = ?")
+        .execute(Tuple.of(email))
+        .onSuccess(rows -> {
+          if (rows.size() == 0) {
+            promise.fail("User not found");
+            return;
+          }
+          Row row = rows.iterator().next();
+          if (!BCrypt.checkpw(passkey, row.getString("passkey_hash"))) {
+            promise.fail("Invalid password");
+            return;
+          }
+          promise.complete(createSession(row));
+        })
+        .onFailure(promise::fail);
 
     return promise.future();
   }
@@ -54,29 +55,29 @@ public class AuthService {
     String role = data.getString("role", "user");
 
     DatabaseConfig.getClient()
-      .preparedQuery("SELECT id FROM users WHERE email = ?")
-      .execute(Tuple.of(email))
-      .onSuccess(rows -> {
-        if (rows.size() > 0) {
-          promise.fail("Email already exists");
-          return;
-        }
-        String id = generateId();
-        String hash = BCrypt.hashpw(passkey, BCrypt.gensalt());
-        DatabaseConfig.getClient()
-          .preparedQuery("INSERT INTO users (id, email, passkey_hash, alias, role) VALUES (?, ?, ?, ?, ?)")
-          .execute(Tuple.of(id, email, hash, alias, role))
-          .onSuccess(v -> {
-            JsonObject user = new JsonObject()
-              .put("id", id)
-              .put("email", email)
-              .put("alias", alias)
-              .put("role", role);
-            promise.complete(user);
-          })
-          .onFailure(promise::fail);
-      })
-      .onFailure(promise::fail);
+        .preparedQuery("SELECT id FROM users WHERE email = ?")
+        .execute(Tuple.of(email))
+        .onSuccess(rows -> {
+          if (rows.size() > 0) {
+            promise.fail("Email already exists");
+            return;
+          }
+          String id = generateId("USER");
+          String hash = BCrypt.hashpw(passkey, BCrypt.gensalt());
+          DatabaseConfig.getClient()
+              .preparedQuery("INSERT INTO users (id, email, passkey_hash, alias, role) VALUES (?, ?, ?, ?, ?)")
+              .execute(Tuple.of(id, email, hash, alias, role))
+              .onSuccess(v -> {
+                JsonObject user = new JsonObject()
+                    .put("id", id)
+                    .put("email", email)
+                    .put("alias", alias)
+                    .put("role", role);
+                promise.complete(user);
+              })
+              .onFailure(promise::fail);
+        })
+        .onFailure(promise::fail);
 
     return promise.future();
   }
@@ -85,33 +86,33 @@ public class AuthService {
     Promise<JsonObject> promise = Promise.promise();
 
     DatabaseConfig.getClient()
-      .preparedQuery("SELECT u.* FROM users u JOIN sessions s ON u.id = s.user_id WHERE s.token = ?")
-      .execute(Tuple.of(token))
-      .onSuccess(rows -> {
-        if (rows.size() == 0) {
-          promise.fail("Invalid token");
-          return;
-        }
-        Row row = rows.iterator().next();
-        promise.complete(userToJson(row));
-      })
-      .onFailure(promise::fail);
+        .preparedQuery("SELECT u.* FROM users u JOIN sessions s ON u.id = s.user_id WHERE s.token = ?")
+        .execute(Tuple.of(token))
+        .onSuccess(rows -> {
+          if (rows.size() == 0) {
+            promise.fail("Invalid token");
+            return;
+          }
+          Row row = rows.iterator().next();
+          promise.complete(userToJson(row));
+        })
+        .onFailure(promise::fail);
 
     return promise.future();
   }
 
   private JsonObject createSession(Row user) {
     String token = UUID.randomUUID().toString();
-    String sessionId = generateId();
+    String sessionId = generateId("USER");
     String expiresAt = LocalDateTime.now().plusDays(7).toString();
 
     DatabaseConfig.getClient()
-      .preparedQuery("INSERT INTO sessions (id, user_id, token, expires_at) VALUES (?, ?, ?, ?)")
-      .execute(Tuple.of(sessionId, user.getString("id"), token, expiresAt));
+        .preparedQuery("INSERT INTO sessions (id, user_id, token, expires_at) VALUES (?, ?, ?, ?)")
+        .execute(Tuple.of(sessionId, user.getString("id"), token, expiresAt));
 
     return new JsonObject()
-      .put("token", token)
-      .put("user", userToJson(user));
+        .put("token", token)
+        .put("user", userToJson(user));
   }
 
   private JsonObject userToJson(Row row) {
@@ -123,7 +124,8 @@ public class AuthService {
     json.put("currentMood", row.getString("current_mood") != null ? row.getString("current_mood") : "Meditative");
     json.put("isAnonymous", row.getInteger("is_anonymous") == 1);
     json.put("isAvailable", row.getInteger("is_available") != null && row.getInteger("is_available") == 1);
-    json.put("totalSoulsHelped", row.getInteger("total_souls_helped") != null ? row.getInteger("total_souls_helped") : 0);
+    json.put("totalSoulsHelped",
+        row.getInteger("total_souls_helped") != null ? row.getInteger("total_souls_helped") : 0);
     json.put("avatarUrl", row.getString("avatar_url"));
     return json;
   }
