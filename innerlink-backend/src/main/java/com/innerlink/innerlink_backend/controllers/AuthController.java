@@ -30,6 +30,6 @@ public class AuthController {
     String token = ctx.request().getHeader("Authorization");
     authService.getCurrentUser(token)
       .onSuccess(ctx::json)
-      .onFailure(err -> ctx.response().setStatusCode(401).end());
+     .onFailure(err -> ctx.response().setStatusCode(401).end(err.getMessage()));
   }
 }

@@ -35,11 +35,14 @@ public class AuthService {
             promise.fail("User not found");
             return;
           }
+
           Row row = rows.iterator().next();
+
           if (!BCrypt.checkpw(passkey, row.getString("passkey_hash"))) {
             promise.fail("Invalid password");
             return;
           }
+
           promise.complete(createSession(row));
         })
         .onFailure(promise::fail);
@@ -62,20 +65,33 @@ public class AuthService {
             promise.fail("Email already exists");
             return;
           }
+          
           String id = generateId("USER");
           String hash = BCrypt.hashpw(passkey, BCrypt.gensalt());
+          
           DatabaseConfig.getClient()
               .preparedQuery("INSERT INTO users (id, email, passkey_hash, alias, role) VALUES (?, ?, ?, ?, ?)")
               .execute(Tuple.of(id, email, hash, alias, role))
-              .onSuccess(v -> {
-                JsonObject user = new JsonObject()
-                    .put("id", id)
-                    .put("email", email)
-                    .put("alias", alias)
-                    .put("role", role);
-                promise.complete(user);
+              .compose(v -> 
+                  // Query the newly inserted row to fetch all defaults seamlessly
+                  DatabaseConfig.getClient()
+                      .preparedQuery("SELECT * FROM users WHERE id = ?")
+                      .execute(Tuple.of(id))
+              )
+              .onSuccess(insertedRows -> {
+                if (insertedRows.size() == 0) {
+                  promise.fail("Failed to retrieve user records following allocation.");
+                  return;
+                }
+                Row newUserRow = insertedRows.iterator().next();
+                
+                // Directly maps user data to json format without producing any session records
+                promise.complete(userToJson(newUserRow));
               })
-              .onFailure(promise::fail);
+              .onFailure(err -> {
+                err.printStackTrace();
+                promise.fail(err);
+              });
         })
         .onFailure(promise::fail);
 
@@ -103,7 +119,7 @@ public class AuthService {
 
   private JsonObject createSession(Row user) {
     String token = UUID.randomUUID().toString();
-    String sessionId = generateId("USER");
+    String sessionId = generateId("SESS");
     String expiresAt = LocalDateTime.now().plusDays(7).toString();
 
     DatabaseConfig.getClient()
@@ -117,16 +133,34 @@ public class AuthService {
 
   private JsonObject userToJson(Row row) {
     JsonObject json = new JsonObject();
+
     json.put("id", row.getString("id"));
     json.put("email", row.getString("email"));
     json.put("alias", row.getString("alias"));
     json.put("role", row.getString("role"));
-    json.put("currentMood", row.getString("current_mood") != null ? row.getString("current_mood") : "Meditative");
-    json.put("isAnonymous", row.getInteger("is_anonymous") == 1);
-    json.put("isAvailable", row.getInteger("is_available") != null && row.getInteger("is_available") == 1);
+
+    json.put("currentMood",
+        row.getString("current_mood") != null
+            ? row.getString("current_mood")
+            : "Meditative");
+
+    json.put("isAnonymous",
+        row.getBoolean("is_anonymous") != null
+            ? row.getBoolean("is_anonymous")
+            : false);
+
+    json.put("isAvailable",
+        row.getBoolean("is_available") != null
+            ? row.getBoolean("is_available")
+            : false);
+
     json.put("totalSoulsHelped",
-        row.getInteger("total_souls_helped") != null ? row.getInteger("total_souls_helped") : 0);
+        row.getInteger("total_souls_helped") != null
+            ? row.getInteger("total_souls_helped")
+            : 0);
+
     json.put("avatarUrl", row.getString("avatar_url"));
+
     return json;
   }
 }

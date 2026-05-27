@@ -23,31 +23,45 @@ public class ChatHandler {
         String messageId = generateId("Message");
         msg.put("id", messageId);
 
+        String userId = msg.getString("userId");
+        String content = msg.getString("content");
+        String conversationId = msg.getString("conversationId");
+
+        String username = msg.getString("username", "unknown");
+        String alias = msg.getString("alias", username);
+
         return chatService.saveMessage(msg)
-                .compose(saved -> aiService.analyzeMessage(msg, vertx))
-                .compose(analysis -> {
+            .compose(saved -> aiService.analyzeMessage(msg, vertx))
+            .compose(analysis -> {
 
-                    int score = analysis.getInteger("heaviness_score");
-                    String label = analysis.getString("condition_label");
-                    boolean danger = analysis.getBoolean("is_danger");
+                int score = analysis.getInteger("heaviness_score", 0);
+                String label = analysis.getString("condition_label", "neutral");
+                boolean danger = analysis.getBoolean("is_danger", false);
 
-                    return chatService.updateMessageRisk(messageId, score, label)
-                            .compose(v -> {
+                return chatService.updateMessageRisk(messageId, score, label)
+                    .compose(v -> {
 
-                                JsonObject response = new JsonObject()
-                                        .put("status", "ok")
-                                        .put("messageId", messageId)
-                                        .put("risk", label)
-                                        .put("score", score);
+                        JsonObject payload = new JsonObject()
+                            .put("type", "message")
+                            .put("data", new JsonObject()
+                                .put("id", messageId)
+                                .put("userId", userId)
+                                .put("conversationId", conversationId)
+                                .put("content", content)
+                                .put("username", username)
+                                .put("alias", alias)
+                                .put("risk", label)
+                                .put("score", score)
+                            );
 
-                                if (danger) {
-                                    chatService.flagEmergency(msg, analysis, vertx);
-                                    response.put("alert", "emergency_triggered");
-                                }
+                        if (danger) {
+                            chatService.flagEmergency(msg, analysis, vertx);
+                            payload.put("alert", "emergency_triggered");
+                        }
 
-                                return Future.succeededFuture(response);
-                            });
-                });
+                        return Future.succeededFuture(payload);
+                    });
+            });
     }
 
     private static String generateId(String prefix) {

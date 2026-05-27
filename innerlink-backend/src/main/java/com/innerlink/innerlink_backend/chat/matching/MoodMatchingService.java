@@ -1,58 +1,98 @@
 package com.innerlink.innerlink_backend.chat.matching;
 
 import com.innerlink.innerlink_backend.config.DatabaseConfig;
-
 import io.vertx.core.Future;
 import io.vertx.core.json.JsonObject;
-import io.vertx.sqlclient.SqlClient;
-import io.vertx.sqlclient.Tuple;
+import io.vertx.sqlclient.*;
+
+import java.util.*;
+import java.util.concurrent.*;
 
 public class MoodMatchingService {
 
     private final SqlClient client = DatabaseConfig.getClient();
 
-    private static String generateId(String prefix) {
-        return prefix + "_" +
-                java.time.LocalDate.now() + "_" +
-                java.util.UUID.randomUUID().toString().substring(0, 9).toUpperCase();
+    // 🔥 in-memory fallback queue
+    private static final Map<String, Queue<String>> WAITING = new ConcurrentHashMap<>();
+
+    private static String generateId() {
+        return "Conv_" + UUID.randomUUID().toString().substring(0, 8);
     }
 
     public Future<JsonObject> findPeerMatch(String userId, String mood) {
 
+        String m = mood == null ? "calm" : mood.toLowerCase();
+
+        // =========================
+        // 1. TRY DB MATCH FIRST
+        // =========================
         return client.preparedQuery("""
-                SELECT id FROM users
-                WHERE id != ?
-                AND current_mood = ?
-                AND role = 'user'
-                LIMIT 1
-            """).execute(Tuple.of(userId, mood))
+            SELECT id FROM users
+            WHERE id != ?
+            AND role = 'user'
+            AND current_mood IS NOT NULL
+            AND LOWER(current_mood) = LOWER(?)
+            LIMIT 1
+        """)
+        .execute(Tuple.of(userId, m))
 
-            .compose(rows -> {
+        .compose(rows -> {
 
-                if (!rows.iterator().hasNext()) {
-                    return Future.failedFuture("No peer match found");
-                }
+            if (rows.iterator().hasNext()) {
 
                 String peerId = rows.iterator().next().getString("id");
-                String conversationId = generateId("Conv");
+                String conversationId = generateId();
 
-                return client.preparedQuery("""
-                        INSERT INTO conversations(id,type,title)
-                        VALUES(?,?,?)
-                    """).execute(Tuple.of(conversationId, "peer", "Mood Match"))
+                return Future.succeededFuture(
+                        new JsonObject()
+                                .put("status", "matched")
+                                .put("conversationId", conversationId)
+                                .put("peerId", peerId)
+                );
+            }
 
-                    .compose(v -> client.preparedQuery("""
-                            INSERT INTO conversation_participants
-                            (conversation_id,user_id,role)
-                            VALUES(?,?,?),(?,?,?)
-                        """).execute(Tuple.of(
-                                conversationId, userId, "member",
-                                conversationId, peerId, "member"
-                        )))
+            // =========================
+            // 2. FALLBACK QUEUE MATCH
+            // =========================
+            WAITING.putIfAbsent(m, new ConcurrentLinkedQueue<>());
+            Queue<String> queue = WAITING.get(m);
 
-                    .map(v -> new JsonObject()
-                            .put("conversationId", conversationId)
-                            .put("peerId", peerId));
-            });
+            String peer = queue.poll();
+
+            if (peer != null && !peer.equals(userId)) {
+
+                String conversationId = generateId();
+
+                return Future.succeededFuture(
+                        new JsonObject()
+                                .put("status", "matched")
+                                .put("conversationId", conversationId)
+                                .put("peerId", peer)
+                );
+            }
+
+            // =========================
+            // 3. PUT INTO QUEUE
+            // =========================
+            queue.add(userId);
+
+            return Future.succeededFuture(
+                    new JsonObject()
+                            .put("status", "waiting")
+                            .put("message", "Waiting for peer match")
+            );
+        })
+
+        // =========================
+        // 4. NEVER CRASH API
+        // =========================
+        .recover(err -> {
+            err.printStackTrace();
+            return Future.succeededFuture(
+                    new JsonObject()
+                            .put("status", "error")
+                            .put("message", "Match service error")
+            );
+        });
     }
 }

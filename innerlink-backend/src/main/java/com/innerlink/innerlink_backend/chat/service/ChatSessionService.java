@@ -20,32 +20,29 @@ public class ChatSessionService {
         this.chatVerticle = chatVerticle;
     }
 
-
     public Future<JsonObject> startVolunteer(String userId, String volunteerId) {
 
         return volunteer.talkToVolunteer(volunteerId, userId)
                 .map(session -> {
                     chatVerticle.registerConversation(
                             session.getString("conversationId"),
-                            Set.of(userId, volunteerId)
-                    );
+                            Set.of(userId, volunteerId));
                     return session;
                 });
     }
-
 
     public Future<JsonObject> startMood(String userId, String mood) {
 
         return peerMood.findPeerMatch(userId, mood)
                 .map(session -> {
+
                     chatVerticle.registerConversation(
                             session.getString("conversationId"),
-                            Set.of(userId, session.getString("peerId"))
-                    );
+                            Set.of(userId));
+
                     return session;
                 });
     }
-
 
     public Future<JsonObject> startGroup(String userId, String mood) {
 
@@ -53,8 +50,7 @@ public class ChatSessionService {
                 .map(session -> {
                     chatVerticle.registerConversation(
                             session.getString("conversationId"),
-                            Set.of(userId)
-                    );
+                            Set.of(userId));
                     return session;
                 });
     }
