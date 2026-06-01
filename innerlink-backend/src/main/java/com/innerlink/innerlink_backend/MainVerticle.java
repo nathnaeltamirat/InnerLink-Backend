@@ -13,7 +13,6 @@ import io.vertx.core.http.HttpMethod;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.handler.BodyHandler;
 import io.vertx.ext.web.handler.CorsHandler;
-import io.vertx.ext.web.handler.StaticHandler;
 
 import java.util.Set;
 
@@ -21,16 +20,14 @@ public class MainVerticle extends AbstractVerticle {
 
   @Override
   public void start(Promise<Void> startPromise) {
-    System.out.println("🚀 Bootstrapping MainVerticle...");
 
-    // 1. Initialize Database configuration pool synchronously
     DatabaseConfig.init(vertx)
         .compose(v -> {
-          System.out.println("💾 Database layer verified. Setting up routing framework...");
+          System.out.println("DB verified. Setting up routing framework...");
 
           Router router = Router.router(vertx);
 
-          // Configure Cross-Origin Resource Sharing
+          // Configure CORS
           router.route().handler(CorsHandler.create()
               .addOrigin("*")
               .allowedMethods(Set.of(HttpMethod.GET, HttpMethod.POST, HttpMethod.PATCH,HttpMethod.PUT, HttpMethod.DELETE))
@@ -57,11 +54,11 @@ public class MainVerticle extends AbstractVerticle {
               .listen(8888);
         })
         .onSuccess(server -> {
-          System.out.println("✅ Application engine fully stable and listening on port 8888!");
+          System.out.println("listening on port 8888");
           startPromise.complete();
         })
         .onFailure(err -> {
-          System.err.println("💥 Application startup aborted: " + err.getMessage());
+          System.err.println("Application startup aborted: " + err.getMessage());
           startPromise.fail(err);
         });
   }

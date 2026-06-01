@@ -41,6 +41,11 @@ public class ChatVerticle extends AbstractVerticle {
                         String conversationId = res.getString("conversationId");
                         String peerId = res.getString("peerId");
 
+                        if (conversationId == null) {
+                            message.reply(res);
+                            return;
+                        }
+
                         if (peerId != null) {
                             registerConversation(conversationId, Set.of(body.getString("userId"), peerId));
                         } else {
@@ -105,6 +110,19 @@ public class ChatVerticle extends AbstractVerticle {
                         message.fail(500,
                                 err.getMessage() != null ? err.getMessage() : "Unknown session allocation error.");
                     });
+        });
+
+        vertx.eventBus().<JsonObject>consumer("chat.action.assign_available_volunteer", message -> {
+            String userId = message.body().getString("userId");
+
+            volunteerTalkingService.assignAvailableVolunteer(userId)
+                    .onSuccess(res -> {
+                        registerConversation(
+                                res.getString("conversationId"),
+                                Set.of(userId, res.getString("volunteerId")));
+                        message.reply(res);
+                    })
+                    .onFailure(err -> message.fail(404, err.getMessage()));
         });
 
         // Endpoint integration A: Fetches left sidebar channel history items
@@ -203,6 +221,12 @@ public class ChatVerticle extends AbstractVerticle {
                 return;
             }
 
+            if ("typing".equals(type) || "presence".equals(type)) {
+                conversationMembers.get(conversationId).add(userId);
+                routeEvent(conversationId, msg);
+                return;
+            }
+
             if (content == null) {
                 ws.writeTextMessage(error("Missing message content"));
                 return;
@@ -210,14 +234,18 @@ public class ChatVerticle extends AbstractVerticle {
 
             chatHandler.handleIncomingMessage(msg, vertx)
                     .onSuccess(result -> {
+                        JsonObject data = result.getJsonObject("data", result);
                         JsonObject standardizedPayload = new JsonObject()
                                 .put("userId", userId)
                                 .put("conversationId", conversationId)
                                 .put("content",
-                                        result.getString("content") != null ? result.getString("content") : content)
+                                        data.getString("content") != null ? data.getString("content") : content)
                                 .put("username",
-                                        result.getString("username") != null ? result.getString("username") : username)
-                                .put("alias", result.getString("alias") != null ? result.getString("alias") : alias);
+                                        data.getString("username") != null ? data.getString("username") : username)
+                                .put("alias", data.getString("alias") != null ? data.getString("alias") : alias)
+                                .put("timestamp", msg.getString("timestamp"))
+                                .put("risk", data.getString("risk"))
+                                .put("score", data.getInteger("score"));
 
                         routeMessage(conversationId, standardizedPayload);
                     })
@@ -248,6 +276,25 @@ public class ChatVerticle extends AbstractVerticle {
 
         for (String userId : members) {
             ServerWebSocket socket = userSockets.get(userId);
+            if (socket != null && !socket.isClosed()) {
+                socket.writeTextMessage(encoded);
+            }
+        }
+    }
+
+    private void routeEvent(String conversationId, JsonObject event) {
+
+        Set<String> members = conversationMembers.get(conversationId);
+        if (members == null || members.isEmpty())
+            return;
+
+        String encoded = event.encode();
+
+        for (String memberId : members) {
+            if (memberId.equals(event.getString("userId"))) {
+                continue;
+            }
+            ServerWebSocket socket = userSockets.get(memberId);
             if (socket != null && !socket.isClosed()) {
                 socket.writeTextMessage(encoded);
             }

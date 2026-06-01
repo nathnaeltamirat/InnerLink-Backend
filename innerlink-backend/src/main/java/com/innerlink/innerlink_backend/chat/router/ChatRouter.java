@@ -27,6 +27,15 @@ public class ChatRouter {
             forwardToEventBus(ctx, "chat.action.initiate_volunteer_room", body);
         });
 
+        router.post("/api/conversations/assign-volunteer").handler(ctx -> {
+            JsonObject body = ctx.body().asJsonObject();
+            if (body == null || body.getString("userId") == null) {
+                sendBadRequest(ctx, "userId is required to assign a volunteer channel.");
+                return;
+            }
+            forwardToEventBus(ctx, "chat.action.assign_available_volunteer", body);
+        });
+
         router.post("/chat/volunteer").handler(ctx -> {
             JsonObject body = ctx.body().asJsonObject();
             if (body == null || body.getString("userId") == null || body.getString("volunteerId") == null) {
@@ -62,6 +71,13 @@ public class ChatRouter {
             JsonObject msgPayload = new JsonObject().put("userId", userId);
             
             forwardToEventBus(ctx, "chat.action.get_user_conversations", msgPayload);
+        });
+
+        router.get("/api/conversations/available-volunteers/:userId").handler(ctx -> {
+            String userId = ctx.pathParam("userId");
+            JsonObject msgPayload = new JsonObject().put("userId", userId);
+
+            forwardToEventBus(ctx, "chat.action.get_available_volunteers", msgPayload);
         });
 
         // 2. Load historical messaging backlog elements securely

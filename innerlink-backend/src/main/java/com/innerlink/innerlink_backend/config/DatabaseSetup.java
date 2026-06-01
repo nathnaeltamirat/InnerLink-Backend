@@ -19,7 +19,7 @@ public class DatabaseSetup {
                 UUID.randomUUID().toString().substring(0, 4).toUpperCase();
     }
 
-    /* ================= USERS ================= */
+    // USERS
 
     private static final String CREATE_USERS_TABLE = """
                 CREATE TABLE IF NOT EXISTS users (
@@ -37,7 +37,7 @@ public class DatabaseSetup {
                 )
             """;
 
-    /* ================= REFLECTIONS ================= */
+    // REFLECTIONS
 
     private static final String CREATE_REFLECTIONS_TABLE = """
                 CREATE TABLE IF NOT EXISTS reflections (
@@ -51,7 +51,7 @@ public class DatabaseSetup {
                 )
             """;
 
-    /* ================= CONVERSATIONS ================= */
+    //  CONVERSATIONS
 
     private static final String CREATE_CONVERSATIONS_TABLE = """
                 CREATE TABLE IF NOT EXISTS conversations (
@@ -63,7 +63,7 @@ public class DatabaseSetup {
                 )
             """;
 
-    /* ================= PARTICIPANTS ================= */
+    // PARTICIPANTS
 
     private static final String CREATE_CONVERSATION_PARTICIPANTS_TABLE = """
                 CREATE TABLE IF NOT EXISTS conversation_participants (
@@ -77,7 +77,7 @@ public class DatabaseSetup {
                 )
             """;
 
-    /* ================= MESSAGES ================= */
+    // MESSAGES
 
     private static final String CREATE_MESSAGES_TABLE = """
                 CREATE TABLE IF NOT EXISTS messages (
@@ -86,13 +86,15 @@ public class DatabaseSetup {
                     user_id           VARCHAR(36),
                     sender_type       ENUM('human','ai','system') DEFAULT 'human',
                     content           TEXT NOT NULL,
+                    heaviness_score    INT DEFAULT 0,
+                    condition_label    VARCHAR(50) DEFAULT 'neutral',
                     sent_at           DATETIME DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
                     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
                 )
             """;
 
-    /* ================= EMERGENCY ================= */
+    // EMERGENCY
 
     private static final String CREATE_EMERGENCY_FLAGS_TABLE = """
                 CREATE TABLE IF NOT EXISTS emergency_flags (
@@ -109,7 +111,7 @@ public class DatabaseSetup {
                 )
             """;
 
-    /* ================= 🔥 NEW: MATCHING QUEUE ================= */
+    // MATCHING QUEUE
 
     private static final String CREATE_MOOD_QUEUE_TABLE = """
                 CREATE TABLE IF NOT EXISTS mood_waiting_queue (
@@ -123,14 +125,14 @@ public class DatabaseSetup {
                 CREATE INDEX idx_mood_queue ON mood_waiting_queue(mood, created_at)
             """;
 
-    /* ================= DEFAULT DATA ================= */
+    // DEFAULT DATA
 
     private static final String INSERT_DEFAULT_USERS = """
                 INSERT INTO users (id, email, passkey_hash, alias, role, is_available)
                 VALUES (?, ?, ?, ?, ?, ?)
             """;
 
-    /* ================= SETUP ================= */
+    // SETUP
 
     public static Future<Void> setupDatabase(Vertx vertx, SqlClient client) {
         Promise<Void> promise = Promise.promise();
@@ -140,18 +142,17 @@ public class DatabaseSetup {
         createTables(client)
                 .compose(v -> insertDefaultData(client))
                 .onSuccess(v -> {
-                    System.out.println("✅ Database setup completed successfully");
+                    System.out.println(" DB setup completed successfully");
                     promise.complete();
                 })
                 .onFailure(err -> {
-                    System.err.println("❌ DB setup failed: " + err.getMessage());
+                    System.err.println(" DB setup failed: " + err.getMessage());
                     promise.fail(err);
                 });
 
         return promise.future();
     }
 
-    /* ================= TABLE CREATION ================= */
 
     private static Future<Void> createTables(SqlClient client) {
         return client.query(CREATE_USERS_TABLE).execute()
@@ -162,15 +163,54 @@ public class DatabaseSetup {
                 .compose(v -> client.query(CREATE_MESSAGES_TABLE).execute())
                 .compose(v -> client.query(CREATE_EMERGENCY_FLAGS_TABLE).execute())
 
-                // 🔥 NEW TABLES
-                .compose(v -> client.query(CREATE_MOOD_QUEUE_TABLE).execute())
-                .compose(v -> client.query(CREATE_INDEX_QUEUE).execute())
 
-                .onSuccess(v -> System.out.println("✅ All tables created"))
+                .compose(v -> client.query(CREATE_MOOD_QUEUE_TABLE).execute())
+                .compose(v -> ensureMessageModerationColumns(client))
+                .compose(v -> ensureMoodQueueIndex(client))
+
+                .onSuccess(v -> System.out.println(" All tables created"))
                 .mapEmpty();
     }
 
-    /* ================= DEFAULT DATA ================= */
+    private static Future<Void> ensureMessageModerationColumns(SqlClient client) {
+        return addColumnIfMissing(client, "messages", "heaviness_score", "INT DEFAULT 0")
+                .compose(v -> addColumnIfMissing(client, "messages", "condition_label", "VARCHAR(50) DEFAULT 'neutral'"));
+    }
+
+    private static Future<Void> addColumnIfMissing(SqlClient client, String tableName, String columnName, String definition) {
+        return client.preparedQuery("""
+                        SELECT COUNT(*) AS count
+                        FROM information_schema.COLUMNS
+                        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?
+                    """)
+                .execute(Tuple.of(tableName, columnName))
+                .compose(rows -> {
+                    long count = rows.iterator().next().getLong("count");
+                    if (count > 0) {
+                        return Future.succeededFuture();
+                    }
+                    return client.query("ALTER TABLE " + tableName + " ADD COLUMN " + columnName + " " + definition)
+                            .execute()
+                            .mapEmpty();
+                });
+    }
+
+    private static Future<Void> ensureMoodQueueIndex(SqlClient client) {
+        return client.preparedQuery("""
+                        SELECT COUNT(*) AS count
+                        FROM information_schema.STATISTICS
+                        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'mood_waiting_queue' AND INDEX_NAME = 'idx_mood_queue'
+                    """)
+                .execute()
+                .compose(rows -> {
+                    long count = rows.iterator().next().getLong("count");
+                    if (count > 0) {
+                        return Future.succeededFuture();
+                    }
+                    return client.query(CREATE_INDEX_QUEUE).execute().mapEmpty();
+                });
+    }
+
 
     private static Future<Void> insertDefaultData(SqlClient client) {
 

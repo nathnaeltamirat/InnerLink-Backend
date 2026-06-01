@@ -36,9 +36,10 @@ public class ChatSessionService {
         return peerMood.findPeerMatch(userId, mood)
                 .map(session -> {
 
-                    chatVerticle.registerConversation(
-                            session.getString("conversationId"),
-                            Set.of(userId));
+                    String conversationId = session.getString("conversationId");
+                    if (conversationId != null) {
+                        chatVerticle.registerConversation(conversationId, Set.of(userId));
+                    }
 
                     return session;
                 });
